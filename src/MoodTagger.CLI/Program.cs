@@ -1,6 +1,7 @@
 ﻿using CommandLine;
 using MoodTagger.Core;
 using MoodTagger.Core.Utils;
+using System.Text.Json;
 
 namespace MoodTagger.CLI
 {
@@ -189,7 +190,8 @@ namespace MoodTagger.CLI
                     if (File.Exists(configPath))
                     {
                         var config = AppConfig.LoadFromFile(configPath);
-                        string json = Newtonsoft.Json.JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
+                        var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+                        string json = JsonSerializer.Serialize(config, jsonOptions);
                         Console.WriteLine(json);
                     }
                     else
@@ -264,85 +266,85 @@ namespace MoodTagger.CLI
     }
 
     [Verb("analyze", HelpText = "Analyze a single MP3 file")]
-    class AnalyzeOptions
+    public record AnalyzeOptions
     {
         [Option('f', "file", Required = true, HelpText = "Path to the MP3 file")]
-        public string FilePath { get; set; }
+        public string FilePath { get; init; } = string.Empty;
 
         [Option('c', "config", Required = false, HelpText = "Path to the configuration file")]
-        public string ConfigPath { get; set; }
+        public string? ConfigPath { get; init; }
 
         [Option('t', "test", Required = false, HelpText = "Test mode (don't write tags)")]
-        public bool TestMode { get; set; }
+        public bool TestMode { get; init; }
 
         [Option('n', "no-backup", Required = false, HelpText = "Don't create backups")]
-        public bool NoBackup { get; set; }
+        public bool NoBackup { get; init; }
 
         [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
-        public bool Verbose { get; set; }
+        public bool Verbose { get; init; }
     }
 
     [Verb("batch", HelpText = "Process a directory of MP3 files")]
-    class BatchOptions
+    public record BatchOptions
     {
         [Option('d', "dir", Required = true, HelpText = "Path to the directory")]
-        public string DirectoryPath { get; set; }
+        public string DirectoryPath { get; init; } = string.Empty;
 
         [Option('r', "recursive", Required = false, HelpText = "Process subdirectories")]
-        public bool Recursive { get; set; }
+        public bool Recursive { get; init; }
 
         [Option('c', "config", Required = false, HelpText = "Path to the configuration file")]
-        public string ConfigPath { get; set; }
+        public string? ConfigPath { get; init; }
 
         [Option('t', "test", Required = false, HelpText = "Test mode (don't write tags)")]
-        public bool TestMode { get; set; }
+        public bool TestMode { get; init; }
 
         [Option('n', "no-backup", Required = false, HelpText = "Don't create backups")]
-        public bool NoBackup { get; set; }
+        public bool NoBackup { get; init; }
 
         [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
-        public bool Verbose { get; set; }
+        public bool Verbose { get; init; }
     }
 
     [Verb("read", HelpText = "Read mood tags from an MP3 file")]
-    class ReadOptions
+    public record ReadOptions
     {
         [Option('f', "file", Required = true, HelpText = "Path to the MP3 file")]
-        public string FilePath { get; set; }
+        public string FilePath { get; init; } = string.Empty;
 
         [Option('c', "config", Required = false, HelpText = "Path to the configuration file")]
-        public string ConfigPath { get; set; }
+        public string? ConfigPath { get; init; }
 
         [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
-        public bool Verbose { get; set; }
+        public bool Verbose { get; init; }
     }
 
     [Verb("restore", HelpText = "Restore a backup of an MP3 file")]
-    class RestoreOptions
+    public record RestoreOptions
     {
         [Option('f', "file", Required = true, HelpText = "Path to the MP3 file")]
-        public string FilePath { get; set; }
+        public string FilePath { get; init; } = string.Empty;
 
         [Option('c', "config", Required = false, HelpText = "Path to the configuration file")]
-        public string ConfigPath { get; set; }
+        public string? ConfigPath { get; init; }
 
         [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
-        public bool Verbose { get; set; }
+        public bool Verbose { get; init; }
     }
 
     [Verb("config", HelpText = "Manage configuration")]
-    class ConfigOptions
+    public record ConfigOptions
     {
         [Option("create", Required = false, HelpText = "Create default configuration")]
-        public bool Create { get; set; }
+        public bool Create { get; init; }
 
         [Option("show", Required = false, HelpText = "Show current configuration")]
-        public bool Show { get; set; }
+        public bool Show { get; init; }
 
         [Option('c', "config", Required = false, HelpText = "Path to the configuration file")]
-        public string ConfigPath { get; set; }
+        public string? ConfigPath { get; init; }
 
         [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
-        public bool Verbose { get; set; }
+        public bool Verbose { get; init; }
     }
 }

@@ -33,51 +33,49 @@ namespace MoodTagger.Core.Audio
                 throw new FileNotFoundException($"File not found: {filePath}");
             }
 
-            var features = new AudioFeatures
-            {
-                FilePath = filePath
-            };
+            // Create a temporary object to hold feature values
+            float bpm = 0;
+            var metadata = new Dictionary<string, string>();
 
             // Extract metadata using TagLib#
-            await Task.Run(() => ExtractMetadata(filePath, features), cancellationToken);
+            await Task.Run(() => ExtractMetadata(filePath, metadata, ref bpm), cancellationToken);
 
             // Process audio using NAudio
-            await Task.Run(() => ProcessAudio(filePath, features), cancellationToken);
+            var audioFeatures = await Task.Run(() => ProcessAudio(filePath, metadata, bpm), cancellationToken);
 
-            return features;
+            return audioFeatures;
         }
 
         /// <summary>
         /// Extracts metadata from an MP3 file
         /// </summary>
         /// <param name="filePath">Path to the MP3 file</param>
-        /// <param name="features">Audio features to populate</param>
-        private void ExtractMetadata(string filePath, AudioFeatures features)
+        /// <param name="metadata">Dictionary to store metadata</param>
+        /// <param name="bpm">BPM value to populate</param>
+        private void ExtractMetadata(string filePath, Dictionary<string, string> metadata, ref float bpm)
         {
             try
             {
-                using (var file = TagLib.File.Create(filePath))
-                {
-                    var tags = file.Tag;
+                using var file = TagLib.File.Create(filePath);
+                var tags = file.Tag;
 
-                    if (!string.IsNullOrEmpty(tags.Title))
-                        features.Metadata["Title"] = tags.Title;
+                if (!string.IsNullOrEmpty(tags.Title))
+                    metadata["Title"] = tags.Title;
 
-                    if (!string.IsNullOrEmpty(tags.FirstPerformer))
-                        features.Metadata["Artist"] = tags.FirstPerformer;
+                if (!string.IsNullOrEmpty(tags.FirstPerformer))
+                    metadata["Artist"] = tags.FirstPerformer;
 
-                    if (!string.IsNullOrEmpty(tags.Album))
-                        features.Metadata["Album"] = tags.Album;
+                if (!string.IsNullOrEmpty(tags.Album))
+                    metadata["Album"] = tags.Album;
 
-                    if (tags.Year > 0)
-                        features.Metadata["Year"] = tags.Year.ToString();
+                if (tags.Year > 0)
+                    metadata["Year"] = tags.Year.ToString();
 
-                    if (tags.Genres.Length > 0)
-                        features.Metadata["Genre"] = string.Join(", ", tags.Genres);
+                if (tags.Genres.Length > 0)
+                    metadata["Genre"] = string.Join(", ", tags.Genres);
 
-                    if (tags.BeatsPerMinute > 0)
-                        features.Bpm = tags.BeatsPerMinute;
-                }
+                if (tags.BeatsPerMinute > 0)
+                    bpm = tags.BeatsPerMinute;
             }
             catch (Exception ex)
             {
@@ -90,65 +88,129 @@ namespace MoodTagger.Core.Audio
         /// Processes audio to extract features
         /// </summary>
         /// <param name="filePath">Path to the MP3 file</param>
-        /// <param name="features">Audio features to populate</param>
-        private void ProcessAudio(string filePath, AudioFeatures features)
+        /// <param name="metadata">Metadata dictionary</param>
+        /// <param name="initialBpm">Initial BPM from metadata</param>
+        /// <returns>Audio features</returns>
+        private AudioFeatures ProcessAudio(string filePath, Dictionary<string, string> metadata, float initialBpm)
         {
+            // Variables to hold feature values
+            float bpm = initialBpm;
+            float rmsEnergy = 0;
+            float zeroCrossingRate = 0;
+            float spectralCentroid = 0;
+            float spectralFlux = 0;
+            float spectralRolloff = 0;
+            float spectralFlatness = 0;
+            float bassPresence = 0;
+            float midPresence = 0;
+            float highPresence = 0;
+            float rhythmStrength = 0;
+            float rhythmRegularity = 0;
+            float onsetDensity = 0;
+            float[] waveformData = Array.Empty<float>();
+            float[] spectralData = Array.Empty<float>();
+            float[] mfccCoefficients = Array.Empty<float>();
+            float[] beatHistogram = Array.Empty<float>();
+            float[] energyEnvelope = Array.Empty<float>();
+
             try
             {
-                using (var reader = new AudioFileReader(filePath))
+                using var reader = new AudioFileReader(filePath);
+                // Resample if needed
+                var resampler = new MediaFoundationResampler(reader, _config.SampleRate);
+                    
+                // Read audio data
+                var buffer = new float[reader.Length / sizeof(float)];
+                var byteBuffer = new byte[buffer.Length * sizeof(float)];
+                int bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length);
+                int samplesRead = bytesRead / sizeof(float);
+                    
+                // Convert byte buffer to float buffer
+                Buffer.BlockCopy(byteBuffer, 0, buffer, 0, bytesRead);
+                    
+                // Resize buffer if needed
+                if (samplesRead < buffer.Length)
                 {
-                    // Resample if needed
-                    var resampler = new MediaFoundationResampler(reader, _config.SampleRate);
-                    
-                    // Read audio data
-                    var buffer = new float[reader.Length / sizeof(float)];
-                    var byteBuffer = new byte[buffer.Length * sizeof(float)];
-                    int bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length);
-                    int samplesRead = bytesRead / sizeof(float);
-                    
-                    // Convert byte buffer to float buffer
-                    Buffer.BlockCopy(byteBuffer, 0, buffer, 0, bytesRead);
-                    
-                    // Resize buffer if needed
-                    if (samplesRead < buffer.Length)
-                    {
-                        Array.Resize(ref buffer, samplesRead);
-                    }
-                    
-                    // Store waveform data (downsampled for efficiency)
-                    features.WaveformData = DownsampleArray(buffer, 10000);
-                    
-                    // Calculate basic features
-                    CalculateBasicFeatures(buffer, features);
-                    
-                    // Calculate spectral features
-                    CalculateSpectralFeatures(buffer, features);
-                    
-                    // Calculate rhythm features
-                    CalculateRhythmFeatures(buffer, features);
-                    
-                    // Detect BPM if not already set from metadata
-                    if (features.Bpm <= 0)
-                    {
-                        features.Bpm = DetectBpm(buffer, reader.WaveFormat.SampleRate);
-                    }
+                    Array.Resize(ref buffer, samplesRead);
                 }
+                    
+                // Store waveform data (downsampled for efficiency)
+                waveformData = DownsampleArray(buffer, 10000);
+                    
+                // Calculate basic features
+                CalculateBasicFeatures(buffer, ref rmsEnergy, ref zeroCrossingRate, ref energyEnvelope, 
+                    ref bassPresence, ref midPresence, ref highPresence);
+                    
+                // Calculate spectral features
+                CalculateSpectralFeatures(buffer, ref spectralCentroid, ref spectralFlux, 
+                    ref spectralRolloff, ref spectralFlatness);
+                    
+                // Calculate rhythm features
+                CalculateRhythmFeatures(buffer, ref rhythmStrength, ref rhythmRegularity, 
+                    ref onsetDensity, ref beatHistogram);
+                    
+                // Detect BPM if not already set from metadata
+                if (bpm <= 0)
+                {
+                    bpm = DetectBpm(buffer, reader.WaveFormat.SampleRate);
+                }
+
+                // Initialize spectral data and MFCC coefficients
+                spectralData = new float[1000]; // Placeholder
+                mfccCoefficients = new float[13]; // Placeholder
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error processing audio: {ex.Message}");
                 
                 // Set default values if processing fails
-                SetDefaultFeatures(features);
+                SetDefaultFeatures(ref bpm, ref rmsEnergy, ref zeroCrossingRate, ref spectralCentroid,
+                                  ref spectralFlux, ref spectralRolloff, ref spectralFlatness,
+                                  ref bassPresence, ref midPresence, ref highPresence,
+                                  ref rhythmStrength, ref rhythmRegularity, ref onsetDensity,
+                                  ref waveformData, ref spectralData, ref mfccCoefficients,
+                                  ref beatHistogram, ref energyEnvelope);
             }
+
+            // Create and return the AudioFeatures object with all properties initialized
+            return new AudioFeatures
+            {
+                FilePath = filePath,
+                Bpm = bpm,
+                RmsEnergy = rmsEnergy,
+                ZeroCrossingRate = zeroCrossingRate,
+                SpectralCentroid = spectralCentroid,
+                SpectralFlux = spectralFlux,
+                SpectralRolloff = spectralRolloff,
+                SpectralFlatness = spectralFlatness,
+                BassPresence = bassPresence,
+                MidPresence = midPresence,
+                HighPresence = highPresence,
+                RhythmStrength = rhythmStrength,
+                RhythmRegularity = rhythmRegularity,
+                OnsetDensity = onsetDensity,
+                WaveformData = waveformData,
+                SpectralData = spectralData,
+                MfccCoefficients = mfccCoefficients,
+                BeatHistogram = beatHistogram,
+                EnergyEnvelope = energyEnvelope,
+                Metadata = metadata
+            };
         }
 
         /// <summary>
         /// Calculates basic audio features
         /// </summary>
         /// <param name="buffer">Audio buffer</param>
-        /// <param name="features">Audio features to populate</param>
-        private void CalculateBasicFeatures(float[] buffer, AudioFeatures features)
+        /// <param name="rmsEnergy">RMS energy output</param>
+        /// <param name="zeroCrossingRate">Zero crossing rate output</param>
+        /// <param name="energyEnvelope">Energy envelope output</param>
+        /// <param name="bassPresence">Bass presence output</param>
+        /// <param name="midPresence">Mid presence output</param>
+        /// <param name="highPresence">High presence output</param>
+        private void CalculateBasicFeatures(float[] buffer, ref float rmsEnergy, ref float zeroCrossingRate, 
+                                           ref float[] energyEnvelope, ref float bassPresence, 
+                                           ref float midPresence, ref float highPresence)
         {
             // Calculate RMS energy
             float sumSquared = 0;
@@ -156,7 +218,7 @@ namespace MoodTagger.Core.Audio
             {
                 sumSquared += buffer[i] * buffer[i];
             }
-            features.RmsEnergy = (float)Math.Sqrt(sumSquared / buffer.Length);
+            rmsEnergy = (float)Math.Sqrt(sumSquared / buffer.Length);
             
             // Calculate zero-crossing rate
             int zeroCrossings = 0;
@@ -167,11 +229,11 @@ namespace MoodTagger.Core.Audio
                     zeroCrossings++;
                 }
             }
-            features.ZeroCrossingRate = (float)zeroCrossings / buffer.Length;
+            zeroCrossingRate = (float)zeroCrossings / buffer.Length;
             
             // Calculate energy envelope
             int envelopeSize = 1000; // Adjust as needed
-            features.EnergyEnvelope = new float[envelopeSize];
+            energyEnvelope = new float[envelopeSize];
             int samplesPerEnvelopePoint = buffer.Length / envelopeSize;
             
             for (int i = 0; i < envelopeSize; i++)
@@ -185,19 +247,22 @@ namespace MoodTagger.Core.Audio
                     sum += Math.Abs(buffer[j]);
                 }
                 
-                features.EnergyEnvelope[i] = sum / (endIdx - startIdx);
+                energyEnvelope[i] = sum / (endIdx - startIdx);
             }
             
             // Calculate frequency band energy
-            CalculateFrequencyBandEnergy(buffer, features);
+            CalculateFrequencyBandEnergy(zeroCrossingRate, ref bassPresence, ref midPresence, ref highPresence);
         }
 
         /// <summary>
         /// Calculates energy in different frequency bands
         /// </summary>
-        /// <param name="buffer">Audio buffer</param>
-        /// <param name="features">Audio features to populate</param>
-        private void CalculateFrequencyBandEnergy(float[] buffer, AudioFeatures features)
+        /// <param name="zeroCrossingRate">Zero crossing rate</param>
+        /// <param name="bassPresence">Bass presence output</param>
+        /// <param name="midPresence">Mid presence output</param>
+        /// <param name="highPresence">High presence output</param>
+        private void CalculateFrequencyBandEnergy(float zeroCrossingRate, ref float bassPresence, 
+                                                 ref float midPresence, ref float highPresence)
         {
             // This is a simplified version - in a real implementation, 
             // we would use FFT to calculate energy in different frequency bands
@@ -205,37 +270,53 @@ namespace MoodTagger.Core.Audio
             // For now, use zero-crossing rate as a rough approximation
             // Higher zero-crossing rate generally means more high-frequency content
             
-            features.BassPresence = 1.0f - features.ZeroCrossingRate * 5; // Rough approximation
-            features.BassPresence = Math.Max(0, Math.Min(1, features.BassPresence));
+            bassPresence = 1.0f - zeroCrossingRate * 5; // Rough approximation
+            bassPresence = Math.Max(0, Math.Min(1, bassPresence));
             
-            features.MidPresence = 1.0f - Math.Abs(features.ZeroCrossingRate * 10 - 1); // Rough approximation
-            features.MidPresence = Math.Max(0, Math.Min(1, features.MidPresence));
+            midPresence = 1.0f - Math.Abs(zeroCrossingRate * 10 - 1); // Rough approximation
+            midPresence = Math.Max(0, Math.Min(1, midPresence));
             
-            features.HighPresence = features.ZeroCrossingRate * 5; // Rough approximation
-            features.HighPresence = Math.Max(0, Math.Min(1, features.HighPresence));
+            highPresence = zeroCrossingRate * 5; // Rough approximation
+            highPresence = Math.Max(0, Math.Min(1, highPresence));
         }
 
         /// <summary>
         /// Calculates spectral features
         /// </summary>
         /// <param name="buffer">Audio buffer</param>
-        /// <param name="features">Audio features to populate</param>
-        private void CalculateSpectralFeatures(float[] buffer, AudioFeatures features)
+        /// <param name="spectralCentroid">Spectral centroid output</param>
+        /// <param name="spectralFlux">Spectral flux output</param>
+        /// <param name="spectralRolloff">Spectral rolloff output</param>
+        /// <param name="spectralFlatness">Spectral flatness output</param>
+        private void CalculateSpectralFeatures(float[] buffer, ref float spectralCentroid, 
+                                              ref float spectralFlux, ref float spectralRolloff, 
+                                              ref float spectralFlatness)
         {
             // In a real implementation, we would use FFT to calculate spectral features
             // For this simplified version, we'll use approximations
             
+            // Calculate zero-crossing rate for approximation
+            int zeroCrossings = 0;
+            for (int i = 1; i < buffer.Length; i++)
+            {
+                if ((buffer[i] >= 0 && buffer[i - 1] < 0) || (buffer[i] < 0 && buffer[i - 1] >= 0))
+                {
+                    zeroCrossings++;
+                }
+            }
+            float zcr = (float)zeroCrossings / buffer.Length;
+            
             // Spectral centroid approximation based on zero-crossing rate
-            features.SpectralCentroid = features.ZeroCrossingRate * 10000;
+            spectralCentroid = zcr * 10000;
             
             // Spectral flux approximation
-            features.SpectralFlux = CalculateSpectralFluxApproximation(buffer);
+            spectralFlux = CalculateSpectralFluxApproximation(buffer);
             
             // Spectral rolloff approximation
-            features.SpectralRolloff = features.ZeroCrossingRate * 15000;
+            spectralRolloff = zcr * 15000;
             
             // Spectral flatness approximation
-            features.SpectralFlatness = 0.5f; // Default value
+            spectralFlatness = 0.5f; // Default value
         }
 
         /// <summary>
@@ -259,8 +340,13 @@ namespace MoodTagger.Core.Audio
         /// Calculates rhythm features
         /// </summary>
         /// <param name="buffer">Audio buffer</param>
-        /// <param name="features">Audio features to populate</param>
-        private void CalculateRhythmFeatures(float[] buffer, AudioFeatures features)
+        /// <param name="rhythmStrength">Rhythm strength output</param>
+        /// <param name="rhythmRegularity">Rhythm regularity output</param>
+        /// <param name="onsetDensity">Onset density output</param>
+        /// <param name="beatHistogram">Beat histogram output</param>
+        private void CalculateRhythmFeatures(float[] buffer, ref float rhythmStrength, 
+                                            ref float rhythmRegularity, ref float onsetDensity, 
+                                            ref float[] beatHistogram)
         {
             // In a real implementation, we would use more sophisticated algorithms
             // For this simplified version, we'll use approximations
@@ -269,21 +355,21 @@ namespace MoodTagger.Core.Audio
             float[] onsetFunction = CalculateOnsetFunction(buffer);
             
             // Calculate rhythm strength based on variance of onset function
-            features.RhythmStrength = CalculateVariance(onsetFunction);
+            rhythmStrength = CalculateVariance(onsetFunction);
             
             // Calculate rhythm regularity based on autocorrelation of onset function
-            features.RhythmRegularity = CalculateRhythmRegularity(onsetFunction);
+            rhythmRegularity = CalculateRhythmRegularity(onsetFunction);
             
             // Calculate onset density
-            features.OnsetDensity = CalculateOnsetDensity(onsetFunction);
+            onsetDensity = CalculateOnsetDensity(onsetFunction);
             
             // Create beat histogram (simplified)
-            features.BeatHistogram = new float[100]; // 100 BPM bins from 60-160 BPM
-            for (int i = 0; i < features.BeatHistogram.Length; i++)
+            beatHistogram = new float[100]; // 100 BPM bins from 60-160 BPM
+            for (int i = 0; i < beatHistogram.Length; i++)
             {
                 float bpm = 60 + i;
-                float distance = Math.Abs(bpm - features.Bpm);
-                features.BeatHistogram[i] = (float)Math.Exp(-distance * distance / 100);
+                float distance = Math.Abs(bpm - 120); // Assuming 120 BPM as default
+                beatHistogram[i] = (float)Math.Exp(-distance * distance / 100);
             }
         }
 
@@ -514,30 +600,35 @@ namespace MoodTagger.Core.Audio
         /// <summary>
         /// Sets default feature values when processing fails
         /// </summary>
-        /// <param name="features">Audio features to populate</param>
-        private void SetDefaultFeatures(AudioFeatures features)
+        private void SetDefaultFeatures(ref float bpm, ref float rmsEnergy, ref float zeroCrossingRate,
+                                       ref float spectralCentroid, ref float spectralFlux,
+                                       ref float spectralRolloff, ref float spectralFlatness,
+                                       ref float bassPresence, ref float midPresence, ref float highPresence,
+                                       ref float rhythmStrength, ref float rhythmRegularity, ref float onsetDensity,
+                                       ref float[] waveformData, ref float[] spectralData, ref float[] mfccCoefficients,
+                                       ref float[] beatHistogram, ref float[] energyEnvelope)
         {
             // Set default values for essential features
-            if (features.Bpm <= 0) features.Bpm = 120;
-            features.RmsEnergy = 0.5f;
-            features.ZeroCrossingRate = 0.1f;
-            features.SpectralCentroid = 1000;
-            features.SpectralFlux = 0.1f;
-            features.SpectralRolloff = 5000;
-            features.SpectralFlatness = 0.5f;
-            features.BassPresence = 0.5f;
-            features.MidPresence = 0.5f;
-            features.HighPresence = 0.5f;
-            features.RhythmStrength = 0.5f;
-            features.RhythmRegularity = 0.5f;
-            features.OnsetDensity = 1.0f;
+            if (bpm <= 0) bpm = 120;
+            rmsEnergy = 0.5f;
+            zeroCrossingRate = 0.1f;
+            spectralCentroid = 1000;
+            spectralFlux = 0.1f;
+            spectralRolloff = 5000;
+            spectralFlatness = 0.5f;
+            bassPresence = 0.5f;
+            midPresence = 0.5f;
+            highPresence = 0.5f;
+            rhythmStrength = 0.5f;
+            rhythmRegularity = 0.5f;
+            onsetDensity = 1.0f;
             
             // Create default arrays
-            features.WaveformData = new float[1000];
-            features.SpectralData = new float[1000];
-            features.MfccCoefficients = new float[13];
-            features.BeatHistogram = new float[100];
-            features.EnergyEnvelope = new float[1000];
+            waveformData = new float[1000];
+            spectralData = new float[1000];
+            mfccCoefficients = new float[13];
+            beatHistogram = new float[100];
+            energyEnvelope = new float[1000];
         }
     }
 }

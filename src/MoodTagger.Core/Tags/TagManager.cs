@@ -70,12 +70,10 @@ namespace MoodTagger.Core.Tags
             {
                 System.IO.File.Delete(backupPath);
             }
-            
-            using (var sourceStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (var destinationStream = new FileStream(backupPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                await sourceStream.CopyToAsync(destinationStream, 81920, cancellationToken);
-            }
+
+            using var sourceStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var destinationStream = new FileStream(backupPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await sourceStream.CopyToAsync(destinationStream, 81920, cancellationToken);
         }
 
         /// <summary>
@@ -87,48 +85,46 @@ namespace MoodTagger.Core.Tags
         {
             try
             {
-                using (var file = TagLib.File.Create(analysis.FilePath))
+                using var file = TagLib.File.Create(analysis.FilePath);
+                var tag = file.GetTag(TagTypes.Id3v2, true) as TagLib.Id3v2.Tag;
+                    
+                if (tag == null)
                 {
-                    var tag = file.GetTag(TagTypes.Id3v2, true) as TagLib.Id3v2.Tag;
-                    
-                    if (tag == null)
-                    {
-                        Console.WriteLine($"Error: Could not create ID3v2 tag for {analysis.FilePath}");
-                        return false;
-                    }
-
-                    // Write mood tags as TXXX frames
-                    WriteCustomTag(tag, "MoodValence", analysis.MoodValence.ToString("F1"));
-                    WriteCustomTag(tag, "Energy", analysis.Energy.ToString("F1"));
-                    WriteCustomTag(tag, "GrooveTightness", analysis.GrooveTightness.ToString("F1"));
-                    WriteCustomTag(tag, "FunkSwing", analysis.FunkSwing.ToString("F1"));
-                    WriteCustomTag(tag, "DancefloorUse", analysis.DancefloorUse.ToString("F1"));
-                    WriteCustomTag(tag, "LayeringPotential", analysis.LayeringPotential.ToString("F1"));
-                    WriteCustomTag(tag, "Tension", analysis.Tension.ToString("F1"));
-                    WriteCustomTag(tag, "RhythmicComplexity", analysis.RhythmicComplexity.ToString("F1"));
-                    WriteCustomTag(tag, "SoundPalette", analysis.SoundPalette.ToString("F1"));
-                    
-                    // Write BPM if detected
-                    if (analysis.Tempo > 0)
-                    {
-                        tag.BeatsPerMinute = (uint)Math.Round(analysis.Tempo);
-                    }
-                    
-                    // Write analysis timestamp and model
-                    WriteCustomTag(tag, "AnalysisTimestamp", analysis.AnalysisTimestamp.ToString("o"));
-                    WriteCustomTag(tag, "AnalysisModel", analysis.ModelUsed);
-                    
-                    // Write explanations if available
-                    foreach (var explanation in analysis.Explanations)
-                    {
-                        WriteCustomTag(tag, $"Explanation_{explanation.Key}", explanation.Value);
-                    }
-                    
-                    // Save the file
-                    file.Save();
-                    
-                    return true;
+                    Console.WriteLine($"Error: Could not create ID3v2 tag for {analysis.FilePath}");
+                    return false;
                 }
+
+                // Write mood tags as TXXX frames
+                WriteCustomTag(tag, "MoodValence", analysis.MoodValence.ToString("F1"));
+                WriteCustomTag(tag, "Energy", analysis.Energy.ToString("F1"));
+                WriteCustomTag(tag, "GrooveTightness", analysis.GrooveTightness.ToString("F1"));
+                WriteCustomTag(tag, "FunkSwing", analysis.FunkSwing.ToString("F1"));
+                WriteCustomTag(tag, "DancefloorUse", analysis.DancefloorUse.ToString("F1"));
+                WriteCustomTag(tag, "LayeringPotential", analysis.LayeringPotential.ToString("F1"));
+                WriteCustomTag(tag, "Tension", analysis.Tension.ToString("F1"));
+                WriteCustomTag(tag, "RhythmicComplexity", analysis.RhythmicComplexity.ToString("F1"));
+                WriteCustomTag(tag, "SoundPalette", analysis.SoundPalette.ToString("F1"));
+                    
+                // Write BPM if detected
+                if (analysis.Tempo > 0)
+                {
+                    tag.BeatsPerMinute = (uint)Math.Round(analysis.Tempo);
+                }
+                    
+                // Write analysis timestamp and model
+                WriteCustomTag(tag, "AnalysisTimestamp", analysis.AnalysisTimestamp.ToString("o"));
+                WriteCustomTag(tag, "AnalysisModel", analysis.ModelUsed);
+                    
+                // Write explanations if available
+                foreach (var explanation in analysis.Explanations)
+                {
+                    WriteCustomTag(tag, $"Explanation_{explanation.Key}", explanation.Value);
+                }
+                    
+                // Save the file
+                file.Save();
+                    
+                return true;
             }
             catch (Exception ex)
             {
@@ -214,60 +210,57 @@ namespace MoodTagger.Core.Tags
         {
             try
             {
-                using (var file = TagLib.File.Create(filePath))
+                using var file = TagLib.File.Create(filePath);
+                var tag = file.GetTag(TagTypes.Id3v2) as TagLib.Id3v2.Tag;
+                    
+                if (tag == null)
                 {
-                    var tag = file.GetTag(TagTypes.Id3v2) as TagLib.Id3v2.Tag;
-                    
-                    if (tag == null)
-                    {
-                        return null;
-                    }
-
-                    var analysis = new MoodAnalysis
-                    {
-                        FilePath = filePath
-                    };
-
-                    // Read mood tags
-                    analysis.MoodValence = ReadCustomTagFloat(tag, "MoodValence");
-                    analysis.Energy = ReadCustomTagFloat(tag, "Energy");
-                    analysis.GrooveTightness = ReadCustomTagFloat(tag, "GrooveTightness");
-                    analysis.FunkSwing = ReadCustomTagFloat(tag, "FunkSwing");
-                    analysis.DancefloorUse = ReadCustomTagFloat(tag, "DancefloorUse");
-                    analysis.LayeringPotential = ReadCustomTagFloat(tag, "LayeringPotential");
-                    analysis.Tension = ReadCustomTagFloat(tag, "Tension");
-                    analysis.RhythmicComplexity = ReadCustomTagFloat(tag, "RhythmicComplexity");
-                    analysis.SoundPalette = ReadCustomTagFloat(tag, "SoundPalette");
-                    
-                    // Read BPM
-                    if (tag.BeatsPerMinute > 0)
-                    {
-                        analysis.Tempo = tag.BeatsPerMinute;
-                    }
-                    
-                    // Read analysis timestamp and model
-                    string timestampStr = ReadCustomTagString(tag, "AnalysisTimestamp");
-                    if (!string.IsNullOrEmpty(timestampStr) && DateTime.TryParse(timestampStr, out DateTime timestamp))
-                    {
-                        analysis.AnalysisTimestamp = timestamp;
-                    }
-                    
-                    analysis.ModelUsed = ReadCustomTagString(tag, "AnalysisModel");
-                    
-                    // Read explanations
-                    foreach (Frame frame in tag.GetFrames())
-                    {
-                        if (frame is UserTextInformationFrame textFrame && 
-                            textFrame.Description.StartsWith("Explanation_") &&
-                            textFrame.Text.Length > 0)
-                        {
-                            string key = textFrame.Description.Substring("Explanation_".Length);
-                            analysis.Explanations[key] = textFrame.Text[0];
-                        }
-                    }
-                    
-                    return analysis;
+                    return null;
                 }
+
+                var analysis = new MoodAnalysis
+                {
+                    FilePath = filePath,
+                    // Read mood tags
+                    MoodValence = ReadCustomTagFloat(tag, "MoodValence"),
+                    Energy = ReadCustomTagFloat(tag, "Energy"),
+                    GrooveTightness = ReadCustomTagFloat(tag, "GrooveTightness"),
+                    FunkSwing = ReadCustomTagFloat(tag, "FunkSwing"),
+                    DancefloorUse = ReadCustomTagFloat(tag, "DancefloorUse"),
+                    LayeringPotential = ReadCustomTagFloat(tag, "LayeringPotential"),
+                    Tension = ReadCustomTagFloat(tag, "Tension"),
+                    RhythmicComplexity = ReadCustomTagFloat(tag, "RhythmicComplexity"),
+                    SoundPalette = ReadCustomTagFloat(tag, "SoundPalette")
+                };
+
+                // Read BPM
+                if (tag.BeatsPerMinute > 0)
+                {
+                    analysis.Tempo = tag.BeatsPerMinute;
+                }
+                    
+                // Read analysis timestamp and model
+                string timestampStr = ReadCustomTagString(tag, "AnalysisTimestamp");
+                if (!string.IsNullOrEmpty(timestampStr) && DateTime.TryParse(timestampStr, out DateTime timestamp))
+                {
+                    analysis.AnalysisTimestamp = timestamp;
+                }
+                    
+                analysis.ModelUsed = ReadCustomTagString(tag, "AnalysisModel");
+                    
+                // Read explanations
+                foreach (Frame frame in tag.GetFrames())
+                {
+                    if (frame is UserTextInformationFrame textFrame && 
+                        textFrame.Description.StartsWith("Explanation_") &&
+                        textFrame.Text.Length > 0)
+                    {
+                        string key = textFrame.Description.Substring("Explanation_".Length);
+                        analysis.Explanations[key] = textFrame.Text[0];
+                    }
+                }
+                    
+                return analysis;
             }
             catch (Exception ex)
             {
@@ -337,12 +330,10 @@ namespace MoodTagger.Core.Tags
                 System.IO.File.Delete(filePath);
                 
                 // Copy the backup to the original path
-                using (var sourceStream = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (var destinationStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    await sourceStream.CopyToAsync(destinationStream, 81920, cancellationToken);
-                }
-                
+                using var sourceStream = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var destinationStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await sourceStream.CopyToAsync(destinationStream, 81920, cancellationToken);
+
                 return true;
             }
             catch (Exception ex)

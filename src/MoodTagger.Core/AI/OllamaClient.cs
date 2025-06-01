@@ -1,9 +1,8 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using MoodTagger.Core.Models;
 using MoodTagger.Core.Utils;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace MoodTagger.Core.AI
 {
@@ -121,15 +120,17 @@ namespace MoodTagger.Core.AI
                 }
             };
 
-            var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
             
             var response = await _client.PostAsync(_generateEndpoint, content, cancellationToken);
             response.EnsureSuccessStatusCode();
             
             var responseJson = await response.Content.ReadAsStringAsync();
-            var responseObj = JObject.Parse(responseJson);
+            using var jsonDoc = JsonDocument.Parse(responseJson);
+            var root = jsonDoc.RootElement;
             
-            return responseObj["response"]?.ToString() ?? string.Empty;
+            return root.GetProperty("response").GetString() ?? string.Empty;
         }
 
         /// <summary>

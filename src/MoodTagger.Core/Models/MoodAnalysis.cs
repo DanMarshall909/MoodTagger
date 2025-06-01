@@ -3,7 +3,7 @@ namespace MoodTagger.Core.Models
     /// <summary>
     /// Represents the mood analysis results for an MP3 file
     /// </summary>
-    public class MoodAnalysis
+    public record MoodAnalysis
     {
         /// <summary>
         /// The file path of the analyzed MP3

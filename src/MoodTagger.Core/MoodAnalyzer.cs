@@ -50,7 +50,7 @@ namespace MoodTagger.Core
                     Console.WriteLine($"File already analyzed: {filePath}");
                     Console.WriteLine($"Previous analysis: {existingAnalysis}");
                 }
-                
+
                 return existingAnalysis;
             }
 
@@ -59,7 +59,7 @@ namespace MoodTagger.Core
             {
                 Console.WriteLine($"Extracting features from {filePath}...");
             }
-            
+
             var features = await _audioProcessor.ExtractFeaturesAsync(filePath, cancellationToken);
 
             // Analyze mood using Ollama
@@ -67,7 +67,7 @@ namespace MoodTagger.Core
             {
                 Console.WriteLine($"Analyzing mood with {_config.OllamaModel}...");
             }
-            
+
             var analysis = await _ollamaClient.AnalyzeMoodAsync(features, cancellationToken);
 
             // Validate analysis
@@ -83,7 +83,7 @@ namespace MoodTagger.Core
                 {
                     Console.WriteLine($"Writing tags to {filePath}...");
                 }
-                
+
                 await _tagManager.WriteTagsAsync(analysis, cancellationToken);
             }
             else if (_config.VerboseOutput)
@@ -102,8 +102,8 @@ namespace MoodTagger.Core
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Dictionary of file paths to mood analysis results</returns>
         public async Task<Dictionary<string, MoodAnalysis>> BatchProcessAsync(
-            IEnumerable<string> filePaths, 
-            IProgress<BatchProgress>? progress = null, 
+            IEnumerable<string> filePaths,
+            IProgress<BatchProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             var results = new Dictionary<string, MoodAnalysis>();
@@ -124,7 +124,7 @@ namespace MoodTagger.Core
                 }
 
                 string filePath = fileList[i];
-                
+
                 try
                 {
                     var analysis = await AnalyzeFileAsync(filePath, cancellationToken);
@@ -139,14 +139,14 @@ namespace MoodTagger.Core
 
                 // Update progress
                 batchProgress.ElapsedTime = DateTime.Now - batchProgress.StartTime;
-                
+
                 if (batchProgress.Completed > 0)
                 {
                     double timePerFile = batchProgress.ElapsedTime.TotalSeconds / batchProgress.Completed;
                     int remainingFiles = batchProgress.Total - batchProgress.Completed - batchProgress.Failed;
                     batchProgress.EstimatedTimeRemaining = TimeSpan.FromSeconds(timePerFile * remainingFiles);
                 }
-                
+
                 progress?.Report(batchProgress);
             }
 
@@ -162,9 +162,9 @@ namespace MoodTagger.Core
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Dictionary of file paths to mood analysis results</returns>
         public async Task<Dictionary<string, MoodAnalysis>> ProcessDirectoryAsync(
-            string directoryPath, 
-            bool recursive = false, 
-            IProgress<BatchProgress>? progress = null, 
+            string directoryPath,
+            bool recursive = false,
+            IProgress<BatchProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             if (!Directory.Exists(directoryPath))
@@ -174,12 +174,12 @@ namespace MoodTagger.Core
 
             var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = Directory.GetFiles(directoryPath, "*.mp3", searchOption);
-            
+
             if (_config.VerboseOutput)
             {
                 Console.WriteLine($"Found {files.Length} MP3 files in {directoryPath}");
             }
-            
+
             return await BatchProcessAsync(files, progress, cancellationToken);
         }
 
@@ -190,7 +190,8 @@ namespace MoodTagger.Core
         /// <param name="analysis">Mood analysis results</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>True if successful, false otherwise</returns>
-        public async Task<bool> WriteTagsAsync(string filePath, MoodAnalysis analysis, CancellationToken cancellationToken = default)
+        public async Task<bool> WriteTagsAsync(string filePath, MoodAnalysis analysis,
+            CancellationToken cancellationToken = default)
         {
             if (analysis == null)
             {
@@ -199,7 +200,7 @@ namespace MoodTagger.Core
 
             // Update file path in case it's different
             analysis.FilePath = filePath;
-            
+
             return await _tagManager.WriteTagsAsync(analysis, cancellationToken);
         }
 
@@ -211,7 +212,8 @@ namespace MoodTagger.Core
         /// <returns>Mood analysis results, or null if not found</returns>
         public async Task<MoodAnalysis> ReadTagsAsync(string filePath, CancellationToken cancellationToken = default)
         {
-            return await _tagManager.ReadTagsAsync(filePath, cancellationToken);
+            return await _tagManager.ReadTagsAsync(filePath, cancellationToken) ??
+                   throw new FileNotFoundException($"Tags not found for file: {filePath}");
         }
 
         /// <summary>

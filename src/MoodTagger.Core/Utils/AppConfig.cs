@@ -1,28 +1,28 @@
-using Newtonsoft.Json;
+using System.Text.Json;
 
 namespace MoodTagger.Core.Utils
 {
     /// <summary>
     /// Configuration settings for the MoodTagger application
     /// </summary>
-    public class AppConfig
+    public record AppConfig
     {
         #region Audio Processing Settings
 
         /// <summary>
         /// Sample rate for audio processing
         /// </summary>
-        public int SampleRate { get; set; } = 44100;
+        public int SampleRate { get; init; } = 44100;
 
         /// <summary>
         /// Frame size for audio processing
         /// </summary>
-        public int FrameSize { get; set; } = 1024;
+        public int FrameSize { get; init; } = 1024;
 
         /// <summary>
         /// Hop size for audio processing
         /// </summary>
-        public int HopSize { get; set; } = 512;
+        public int HopSize { get; init; } = 512;
 
         #endregion
 
@@ -31,22 +31,22 @@ namespace MoodTagger.Core.Utils
         /// <summary>
         /// Base URL for the Ollama API
         /// </summary>
-        public string OllamaBaseUrl { get; set; } = "http://localhost:11434/api";
+        public string OllamaBaseUrl { get; init; } = "http://localhost:11434/api";
 
         /// <summary>
         /// Model to use for analysis
         /// </summary>
-        public string OllamaModel { get; set; } = "llama3";
+        public string OllamaModel { get; init; } = "llama3";
 
         /// <summary>
         /// Temperature for the Ollama API
         /// </summary>
-        public float Temperature { get; set; } = 0.1f;
+        public float Temperature { get; init; } = 0.1f;
 
         /// <summary>
         /// Maximum number of tokens to generate
         /// </summary>
-        public int MaxTokens { get; set; } = 1000;
+        public int MaxTokens { get; init; } = 1000;
 
         #endregion
 
@@ -55,17 +55,17 @@ namespace MoodTagger.Core.Utils
         /// <summary>
         /// Maximum GPU memory to use in MB
         /// </summary>
-        public int MaxGpuMemoryMB { get; set; } = 6000;
+        public int MaxGpuMemoryMB { get; init; } = 6000;
 
         /// <summary>
         /// Batch size for processing
         /// </summary>
-        public int BatchSize { get; set; } = 1;
+        public int BatchSize { get; init; } = 1;
 
         /// <summary>
         /// Whether to use dynamic batching
         /// </summary>
-        public bool DynamicBatching { get; set; } = true;
+        public bool DynamicBatching { get; init; } = true;
 
         #endregion
 
@@ -115,7 +115,7 @@ namespace MoodTagger.Core.Utils
             }
 
             string json = File.ReadAllText(filePath);
-            return JsonConvert.DeserializeObject<AppConfig>(json) ?? new AppConfig();
+            return JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
         }
 
         /// <summary>
@@ -124,13 +124,18 @@ namespace MoodTagger.Core.Utils
         /// <param name="filePath">Path to save the configuration file</param>
         public void SaveToFile(string filePath)
         {
-            string directory = Path.GetDirectoryName(filePath);
+            string directory = Path.GetDirectoryName(filePath ?? throw new ArgumentNullException(nameof(filePath)))!;
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            string json = JsonConvert.SerializeObject(this, Formatting.Indented);
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+
+            string json = JsonSerializer.Serialize(this, options);
             File.WriteAllText(filePath, json);
         }
 
