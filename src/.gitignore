@@ -1,0 +1,36 @@
+# Build results
+bin/
+obj/
+out/
+
+# Rider project files
+.idea/
+*.sln.iml
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NAudio temp files (if any)
+NAudioTemp*
+
+# VS Code settings (if used)
+.vscode/
+
+# Test results
+TestResults/
+*.coverage
+*.coveragexml
+
+# NuGet packages
+*.nupkg
+packages/
